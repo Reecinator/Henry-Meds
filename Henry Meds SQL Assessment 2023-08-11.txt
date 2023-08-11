@@ -1,0 +1,155 @@
+
+/*** Question 1 ***/
+select	a.CustomerName
+		,count(b.OrderID) as Number_of_Orders
+
+from	Customers a with (nolock)
+		left join Orders b with (nolock)
+			on a.CustomerID = b.CustomerID
+
+group by CustomerName
+order by count(b.OrderID) desc
+option (recompile, maxdop 1)
+
+
+
+/*** Question 2 ***/
+if OBJECT_ID('TempDB..#T1') is not null DROP TABLE #T1
+select	a.CustomerID
+		,a.City
+
+into #T1
+from	Customers a
+		left join Orders b
+			on a.CustomerID = b.CustomerID
+
+where a.City = 'London'
+group by a.CustomerID
+		,a.City
+having count (b.OrderID) > 1
+option (recompile, maxdop 1)
+
+--select * from #T1
+
+Update a
+Set 
+	a.City = 'New York'
+
+from	Customers a with (nolock)
+		inner join #T1 b with (nolock)
+			on a.CustomerID = b.CustomerID
+
+select	a.CustomerID
+		,a.CustomerName
+		,a.Age
+		,a.City
+		,count(b.OrderID) as Number_of_Orders
+from	Customers a with (nolock)
+		left join Orders b with (nolock)
+			on a.CustomerID = b.CustomerID
+
+group by a.CustomerID
+		,a.CustomerName
+		,a.Age
+		,a.City
+option (recompile, maxdop 1)
+
+
+/*** Question 3 ***/
+select	year(a.OrderDate) as [Year]
+		,month(a.OrderDate) as [Month]
+		,case	when month(a.OrderDate) <= 9 then concat(year(a.OrderDate),'0',month(a.OrderDate))
+				else concat(year(a.OrderDate), month(a.OrderDate))
+		end as YearMo
+		,sum(a.UnitsSold) as Total_Units_Sold
+
+from Orders a with (nolock)
+
+group by	month(a.OrderDate)
+			,year(a.OrderDate)
+			,case	when month(a.OrderDate) <= 9 then concat(year(a.OrderDate),'0',month(a.OrderDate))
+				else concat(year(a.OrderDate), month(a.OrderDate))
+			end
+
+order by	year(a.OrderDate)
+			,month(a.OrderDate) asc
+option (recompile, maxdop 1)
+
+
+
+/*** Question 4 ***/
+select top (5) 
+		CustomerName
+		,Total_Order_Amount
+
+from	(select a.customerName
+				,sum(b.TotalAmount) as Total_Order_Amount
+
+		from Customers a with (nolock)
+		left join Orders b with (nolock)
+			on a.CustomerID = b.CustomerID
+
+		group by a.customerName
+		) a
+order by Total_Order_Amount desc
+option (recompile, maxdop 1)
+
+
+
+/*** Question 5 ***/
+select top (3)
+		CustomerName
+		,Total_Order_Amount
+
+from	(select a.customerName
+				,sum(b.TotalAmount) as Total_Order_Amount
+
+		from Customers a with (nolock)
+		left join Orders b with (nolock)
+			on a.CustomerID = b.CustomerID
+
+		where b.OrderDate >= dateadd(month, -3, getdate())
+		group by a.customerName
+		) a
+
+order by Total_Order_Amount desc
+option (recompile, maxdop 1)
+
+
+
+/*** Question 6 ***/
+/* Is there a product name field or product table to help answer question #6? */
+
+if OBJECT_ID('TempDB..#T6') is not null DROP TABLE #T6
+select	a.ProductID
+		,case	when month(a.OrderDate) <= 9 then concat(year(a.OrderDate),'0',month(a.OrderDate))
+				else concat(year(a.OrderDate), month(a.OrderDate))
+		end as YearMo
+		--,ProductName
+		,sum(a.TotalAmount) as Monthly_Sales
+
+into #T6
+from Orders a with (nolock)
+
+group by a.ProductID
+		,case	when month(a.OrderDate) <= 9 then concat(year(a.OrderDate),'0',month(a.OrderDate))
+				else concat(year(a.OrderDate), month(a.OrderDate))
+		end
+
+option (recompile, maxdop 1)
+
+--select * from #T6
+
+select	ProductID
+		,NULL as ProductName
+		,YearMo
+		,Monthly_Sales
+		,cast(case	when ProductID = LAG(ProductID) over (order by ProductID,YearMo asc)
+					then (Monthly_Sales - lag(Monthly_Sales) over (order by ProductID, YearMo asc)) 
+							/ lag(Monthly_Sales) over (order by ProductID, YearMo asc) * 100 
+				else NULL end as decimal(10,2)) 
+		as Monthly_Sales_Growth_Rate_Percentage
+
+from #T6
+
+order by ProductID, YearMo asc
